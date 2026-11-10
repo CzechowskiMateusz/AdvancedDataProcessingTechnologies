@@ -1,0 +1,172 @@
+-- Duże obiekty binarne
+-- Zadanie 1.
+CREATE TABLE MOVIES AS SELECT * FROM ZTPD.MOVIES;
+
+-- Zadanie 2.
+SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, NULLABLE 
+FROM USER_TAB_COLS 
+WHERE TABLE_NAME = 'MOVIES';
+
+-- Zadanie 3.
+SELECT ID, TITLE FROM MOVIES WHERE COVER IS NULL;
+
+-- Zadanie 4.
+SELECT ID, TITLE, DBMS_LOB.GETLENGTH(COVER) AS FILESIZE FROM MOVIES 
+WHERE COVER IS NOT NULL;
+
+-- Zadanie 5.
+SELECT ID, TITLE, DBMS_LOB.GETLENGTH(COVER) AS FILESIZE FROM MOVIES 
+WHERE COVER IS NULL;
+
+-- Zadanie 6.
+SELECT DIRECTORY_NAME, DIRECTORY_PATH FROM ALL_DIRECTORIES 
+WHERE DIRECTORY_NAME = 'TPD_DIR';
+
+-- Zadanie 7.
+UPDATE MOVIES SET COVER = EMPTY_BLOB(), MIME_TYPE = 'image/jpeg' 
+WHERE ID = 66;
+COMMIT;
+
+-- Zadanie 8.
+SELECT ID, TITLE, DBMS_LOB.GETLENGTH(COVER) AS FILESIZE FROM MOVIES 
+WHERE ID IN (65, 66);
+
+-- Zadanie 9.
+DECLARE
+    v_bfile BFILE := BFILENAME('TPD_DIR', 'escape.jpg');
+    v_blob  BLOB;
+BEGIN
+    SELECT COVER INTO v_blob FROM MOVIES WHERE ID = 66 FOR UPDATE;
+    DBMS_LOB.FILEOPEN(v_bfile, DBMS_LOB.FILE_READONLY);
+    DBMS_LOB.LOADFROMFILE(v_blob, v_bfile, DBMS_LOB.GETLENGTH(v_bfile));
+    DBMS_LOB.FILECLOSE(v_bfile);
+    COMMIT;
+END;
+
+-- Zadanie 10.
+CREATE TABLE TEMP_COVERS (
+    movie_id NUMBER(12),
+    image BFILE,
+    mime_type VARCHAR2(50)
+);
+
+-- Zadanie 11.
+INSERT INTO TEMP_COVERS VALUES (65, BFILENAME('TPD_DIR', 'eagles.jpg'), 'image/jpeg');
+COMMIT;
+
+-- Zadanie 12.
+SELECT MOVIE_ID, DBMS_LOB.GETLENGTH(IMAGE) AS FILESIZE FROM TEMP_COVERS;
+
+-- Zadanie 13.
+DECLARE
+    v_bfile BFILE;
+    v_mime  VARCHAR2(50);
+    v_temp_blob BLOB;
+BEGIN
+    SELECT IMAGE, MIME_TYPE INTO v_bfile, v_mime FROM TEMP_COVERS WHERE MOVIE_ID = 65;
+    DBMS_LOB.CREATETEMPORARY(v_temp_blob, TRUE);
+    
+    DBMS_LOB.FILEOPEN(v_bfile, DBMS_LOB.FILE_READONLY);
+    DBMS_LOB.LOADFROMFILE(v_temp_blob, v_bfile, DBMS_LOB.GETLENGTH(v_bfile));
+    DBMS_LOB.FILECLOSE(v_bfile);
+    
+    UPDATE MOVIES SET COVER = v_temp_blob, MIME_TYPE = v_mime WHERE ID = 65;
+    
+    DBMS_LOB.FREETEMPORARY(v_temp_blob);
+    COMMIT;
+END;
+
+-- Zadanie 14.
+SELECT ID AS MOVIE_ID, DBMS_LOB.GETLENGTH(COVER) AS FILESIZE FROM MOVIES 
+WHERE ID IN (65, 66);
+
+-- Zadanie 15.
+DROP TABLE MOVIES;
+
+-- Duże obiekty tekstowe
+-- Zadanie 16.
+CREATE TABLE DOKUMENTY (
+    ID NUMBER(12) PRIMARY KEY,
+    DOKUMENT CLOB
+);
+
+-- Zadanie 17.
+DECLARE
+    v_clob CLOB;
+BEGIN
+    DBMS_LOB.CREATETEMPORARY(v_clob, TRUE);
+    FOR i IN 1..10000 LOOP
+        DBMS_LOB.APPEND(v_clob, TO_CLOB('Oto tekst. '));
+    END LOOP;
+    INSERT INTO DOKUMENTY VALUES (1, v_clob);
+    DBMS_LOB.FREETEMPORARY(v_clob);
+    COMMIT;
+END;
+
+-- Zadanie 18.
+-- a.
+SELECT * FROM DOKUMENTY;
+-- b.
+SELECT ID, UPPER(DOKUMENT) FROM DOKUMENTY;
+-- c.
+SELECT ID, LENGTH(DOKUMENT) FROM DOKUMENTY;
+-- d.
+SELECT ID, DBMS_LOB.GETLENGTH(DOKUMENT) FROM DOKUMENTY;
+-- e.
+SELECT ID, SUBSTR(DOKUMENT, 5, 1000) FROM DOKUMENTY;
+-- f.
+SELECT ID, DBMS_LOB.SUBSTR(DOKUMENT, 1000, 5) FROM DOKUMENTY;
+
+-- Zadanie 19.
+INSERT INTO DOKUMENTY VALUES (2, EMPTY_CLOB());
+
+-- Zadanie 20.
+INSERT INTO DOKUMENTY VALUES (3, NULL);
+COMMIT;
+
+-- Zadanie 21.
+SELECT ID, LENGTH(DOKUMENT), DBMS_LOB.GETLENGTH(DOKUMENT) FROM DOKUMENTY;
+
+-- Zadanie 22.
+DECLARE
+    v_bfile    BFILE := BFILENAME('TPD_DIR', 'dokument.txt');
+    v_clob     CLOB;
+    v_dest_off INTEGER := 1;
+    v_src_off  INTEGER := 1;
+    v_csid     INTEGER := 0;
+    v_lang_ctx INTEGER := 0;
+    v_warn     INTEGER;
+BEGIN
+    SELECT DOKUMENT INTO v_clob FROM DOKUMENTY WHERE ID = 2 FOR UPDATE;
+    DBMS_LOB.FILEOPEN(v_bfile, DBMS_LOB.FILE_READONLY);
+    
+    DBMS_LOB.LOADCLOBFROMFILE(
+        dest_lob     => v_clob,
+        src_bfile    => v_bfile,
+        amount       => DBMS_LOB.GETLENGTH(v_bfile),
+        dest_offset  => v_dest_off,
+        src_offset   => v_src_off,
+        bfile_csid   => v_csid,
+        lang_context => v_lang_ctx,
+        warning      => v_warn
+    );
+    
+    DBMS_LOB.FILECLOSE(v_bfile);
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('Kopiowanie zakonczone - status operacji: ' || v_warn);
+END;
+
+-- Zadanie 23.
+UPDATE DOKUMENTY 
+SET DOKUMENT = TO_CLOB(BFILENAME('TPD_DIR', 'dokument.txt')) 
+WHERE ID = 3;
+COMMIT;
+
+-- Zadanie 24.
+SELECT * FROM DOKUMENTY;
+
+-- Zadanie 25.
+SELECT ID, DBMS_LOB.GETLENGTH(DOKUMENT) AS ROZMIAR FROM DOKUMENTY;
+
+-- Zadanie 26.
+DROP TABLE DOKUMENTY;
